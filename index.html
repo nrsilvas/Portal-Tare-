@@ -137,12 +137,12 @@
   .filters select{cursor:pointer;}
   .count-note{font-size:12.5px; color:var(--ink-soft); margin-bottom:10px; font-family:'IBM Plex Mono',monospace;}
 
-  table.actions{width:100%; min-width:1560px; border-collapse:collapse; font-size:13px; table-layout:fixed;}
+  table.actions{width:100%; min-width:1600px; border-collapse:collapse; font-size:13px; table-layout:fixed;}
   table.actions thead th{
-    text-align:left; padding:12px 14px; border-bottom:2px solid var(--ink);
+    text-align:left; padding:12px 18px; border-bottom:2px solid var(--ink);
     font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); position:sticky; top:0; background:#fff;
   }
-  table.actions tbody td{padding:13px 14px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.5;}
+  table.actions tbody td{padding:14px 18px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.5;}
   table.actions tbody tr:hover{background:var(--bg);}
   .tag{
     display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600;
@@ -231,10 +231,16 @@
   }
   .obs-input{
     font-family:'Inter',sans-serif; font-size:12px; color:var(--ink); width:100%;
-    border:1px solid var(--line); border-radius:6px; padding:5px 7px; background:#fff;
+    border:1px solid var(--line); border-radius:6px; padding:7px 10px; background:#fff;
   }
   .obs-input:focus{border-color:var(--primary); outline:none;}
   .obs-input::placeholder{color:#B7BFCB;}
+
+  .btn-delete{
+    background:transparent; border:1px solid transparent; border-radius:7px;
+    font-size:14px; padding:5px 8px; cursor:pointer; color:var(--ink-soft);
+  }
+  .btn-delete:hover{background:var(--alert-tint); border-color:#EBC7C1; color:var(--alert);}
 
   /* ---------- TARE SUMMARY BAR ---------- */
   .tare-summary-bar{
@@ -264,9 +270,10 @@
   .status-stack span{height:100%;}
 
   .status-select{
-    font-family:'Inter',sans-serif; font-size:12px; font-weight:600; padding:5px 8px;
+    font-family:'Inter',sans-serif; font-size:12px; font-weight:600; padding:7px 10px;
     border-radius:7px; border:1px solid var(--line); cursor:pointer; min-width:128px;
   }
+  table.actions .status-select{width:100%;}
   .status-select.st-empty{background:#F1F3F5; color:var(--ink-soft); border-color:var(--line);}
   .status-select.st-concluida{background:#E1F0EA; color:var(--ok); border-color:#BFE0D2;}
   .status-select.st-encerrada{background:var(--primary-tint); color:var(--primary-dark); border-color:#BFDADD;}
@@ -446,7 +453,7 @@
       <div class="count-note" id="countNote"></div>
       <div class="table-scroll">
         <table class="actions">
-          <thead><tr><th style="width:300px">Ação / TARE</th><th style="width:70px">UF</th><th style="width:155px">Natureza</th><th style="width:115px">Periodicidade</th><th style="width:120px">Data</th><th style="width:135px">Valor Apurado (R$)</th><th style="width:155px">Responsável</th><th style="width:130px">Status</th><th style="width:210px">Observação</th><th style="width:210px">Quadro Resumo de Regras do TARE</th></tr></thead>
+          <thead><tr><th style="width:270px">Ação / TARE</th><th style="width:65px">UF</th><th style="width:135px">Natureza</th><th style="width:105px">Periodicidade</th><th style="width:110px">Data</th><th style="width:125px">Valor Apurado (R$)</th><th style="width:145px">Responsável</th><th style="width:160px">Status</th><th style="width:240px">Observação</th><th style="width:190px">Quadro Resumo de Regras do TARE</th><th style="width:55px"></th></tr></thead>
           <tbody id="actionsBody"></tbody>
         </table>
       </div>
@@ -502,6 +509,9 @@ const themeCount = DATA.theme_count;
 const matrix = DATA.matrix;
 const respCount = DATA.resp_count;
 const tareGroupsSorted = DATA.tare_groups_sorted;
+function liveTareGroups(){
+  return records.filter(r=>r.is_macro).map(r=>r.nome);
+}
 
 const primary = '#0035B2';
 const gold = '#7C948D';
@@ -836,7 +846,7 @@ themesSorted.forEach(t=>{
   selTheme.innerHTML += `<option value="${t}">${t}</option>`;
 });
 const selTare = document.getElementById('filterTare');
-tareGroupsSorted.forEach(g=>{
+liveTareGroups().forEach(g=>{
   selTare.innerHTML += `<option value="${g}">${g}</option>`;
 });
 function refreshRespFilterOptions(){
@@ -862,6 +872,43 @@ function updateObs(id, value){
 function updateValor(id, value){
   const rec = records.find(r=>r.id===id);
   if(rec) rec.valor = value;
+  render();
+}
+function deleteRecord(id){
+  const rec = records.find(r=>r.id===id);
+  if(!rec) return;
+
+  if(rec.is_macro){
+    const related = records.filter(r=>!r.is_macro && r.tare_grupo===rec.nome);
+    const ok = confirm(`Excluir o TARE "${rec.nome}"?\n\nIsso também vai remover as ${related.length} ação(ões) associada(s) a ele. Essa ação não pode ser desfeita.\n\nConfirmar?`);
+    if(!ok) return;
+    const idsToRemove = new Set([rec.id, ...related.map(r=>r.id)]);
+    for(let i=records.length-1; i>=0; i--){
+      if(idsToRemove.has(records[i].id)) records.splice(i,1);
+    }
+    const currentTareSel = selTare.value;
+    selTare.innerHTML = '<option value="">Todos os TAREs</option>' +
+      liveTareGroups().map(g=>`<option value="${g}">${g}</option>`).join('');
+    if(currentTareSel !== rec.nome) selTare.value = currentTareSel;
+    if(regrasLookupSelect.value === rec.nome){
+      const remaining = liveTareGroups();
+      regrasLookupSelect.innerHTML = remaining.map(g=>`<option value="${g}">${g}</option>`).join('');
+      if(remaining.length) renderRegrasPanel();
+      else document.getElementById('regrasPanel').innerHTML = '<span style="color:var(--ink-soft)">Nenhum TARE cadastrado.</span>';
+    }
+  } else {
+    const ok = confirm(`Excluir a ação:\n\n"${rec.nome}"\n\nEssa ação não pode ser desfeita. Confirmar?`);
+    if(!ok) return;
+    const idx = records.findIndex(r=>r.id===id);
+    if(idx>-1) records.splice(idx,1);
+  }
+
+  recalcStateThemeViews();
+  renderDonut();
+  renderQuarterChart();
+  renderStatusSummary();
+  renderConformidadeSummary();
+  refreshRespFilterOptions();
   render();
 }
 function escapeHtml(s){
@@ -964,6 +1011,7 @@ function render(){
         <td><select class="status-select ${conformClass(r.status)}" onchange="updateStatus(${r.id}, this.value); this.className='status-select '+conformClass(this.value);">${confOptionsHtml}</select></td>
         <td>${obsCell}</td>
         <td>${regrasHtml}</td>
+        <td><button class="btn-delete" title="Excluir TARE e todas as suas ações" onclick="deleteRecord(${r.id})">🗑</button></td>
       </tr>`;
     }
 
@@ -985,6 +1033,7 @@ function render(){
       <td><select class="status-select ${statusClass(r.status)}" onchange="updateStatus(${r.id}, this.value); this.className='status-select '+statusClass(this.value);">${statusOptionsHtml}</select></td>
       <td>${obsCell}</td>
       <td>—</td>
+      <td><button class="btn-delete" title="Excluir ação" onclick="deleteRecord(${r.id})">🗑</button></td>
     </tr>`;
   }).join('');
 }
@@ -1026,7 +1075,7 @@ document.getElementById('btnToggleAdd').addEventListener('click', ()=>{
   if(opening){
     populateAddForm();
     document.getElementById('newTare').innerHTML = '<option value="">— Sem TARE associado —</option>' +
-      tareGroupsSorted.map(g=>`<option value="${g}">${g}</option>`).join('');
+      liveTareGroups().map(g=>`<option value="${g}">${g}</option>`).join('');
     pctForm.style.display = 'none';
   }
   addForm.style.display = opening ? 'block' : 'none';
@@ -1040,7 +1089,7 @@ document.getElementById('btnTogglePct').addEventListener('click', ()=>{
   const opening = pctForm.style.display === 'none';
   if(opening){
     document.getElementById('pctTare').innerHTML = '<option value="">Todos os TAREs</option>' +
-      tareGroupsSorted.map(g=>`<option value="${g}">${g}</option>`).join('');
+      liveTareGroups().map(g=>`<option value="${g}">${g}</option>`).join('');
     if(selTare.value) document.getElementById('pctTare').value = selTare.value;
     document.getElementById('pctOld').value = '';
     document.getElementById('pctNew').value = '';
@@ -1134,7 +1183,7 @@ document.getElementById('btnSaveAction').addEventListener('click', addNewAction)
 
 // ---------- QUADRO RESUMO DE REGRAS DO TARE (LOOKUP) ----------
 const regrasLookupSelect = document.getElementById('regrasLookupSelect');
-regrasLookupSelect.innerHTML = tareGroupsSorted.map(g=>`<option value="${g}">${g}</option>`).join('');
+regrasLookupSelect.innerHTML = liveTareGroups().map(g=>`<option value="${g}">${g}</option>`).join('');
 
 function renderRegrasPanel(){
   const tareName = regrasLookupSelect.value;
