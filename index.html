@@ -316,16 +316,25 @@
 
   footer{text-align:center; padding:26px; font-size:11.5px; color:var(--ink-soft);}
 
+  .save-float-wrap{
+    position:fixed; bottom:26px; right:26px; z-index:200; display:flex; align-items:center; gap:10px;
+  }
   .btn-save-float{
-    position:fixed; bottom:26px; right:26px; z-index:200;
     font-family:'Inter',sans-serif; font-size:14px; font-weight:700; color:#fff;
     background:var(--primary); border:none; border-radius:30px; padding:14px 24px; cursor:pointer;
-    box-shadow:0 8px 22px rgba(0,53,178,0.38);
+    box-shadow:0 8px 22px rgba(0,53,178,0.38); white-space:nowrap;
   }
   .btn-save-float:hover{background:var(--primary-dark); transform:translateY(-1px);}
   .btn-save-float:active{transform:translateY(0);}
+  .btn-gh-settings{
+    width:48px; height:48px; border-radius:50%; background:var(--steel-dark); color:#fff;
+    border:none; cursor:pointer; font-size:18px; box-shadow:0 6px 16px rgba(16,25,43,0.3); flex-shrink:0;
+  }
+  .btn-gh-settings:hover{background:#3E4C47;}
   @media (max-width:900px){
-    .btn-save-float{bottom:16px; right:16px; padding:12px 18px; font-size:13px;}
+    .save-float-wrap{bottom:16px; right:16px; gap:8px;}
+    .btn-save-float{padding:12px 18px; font-size:13px;}
+    .btn-gh-settings{width:40px; height:40px; font-size:15px;}
   }
 
   @media (max-width:900px){
@@ -515,7 +524,29 @@
   </section>
 
 </main>
-<button class="btn-save-float" id="btnSaveChanges" title="Baixa uma cópia atualizada deste painel com todas as edições feitas até agora">💾 Salvar alterações</button>
+<div class="card add-form" id="githubForm" style="display:none; position:fixed; bottom:92px; right:26px; width:380px; max-width:90vw; z-index:201; box-shadow:0 14px 34px rgba(16,25,43,0.28);">
+  <div class="add-form-grid" style="grid-template-columns:1fr;">
+    <div class="field"><label>Repositório (owner/repo)</label><input type="text" id="ghRepo" placeholder="ex: seuusuario/painel-tare"></div>
+    <div class="field"><label>Caminho do arquivo no repositório</label><input type="text" id="ghPath" placeholder="ex: index.html"></div>
+    <div class="field"><label>Branch</label><input type="text" id="ghBranch" placeholder="main"></div>
+    <div class="field"><label>Token de acesso pessoal (GitHub)</label><input type="password" id="ghToken" placeholder="ghp_..."></div>
+    <div class="field" style="flex-direction:row; align-items:center; gap:8px;">
+      <input type="checkbox" id="ghRemember" style="width:auto;">
+      <label style="text-transform:none; font-size:12px; font-weight:500; letter-spacing:0;" for="ghRemember">Lembrar neste navegador</label>
+    </div>
+  </div>
+  <div class="desc" style="margin-top:6px; font-size:11.5px;">O token precisa da permissão "repo" (leitura e escrita) e nunca sai do seu navegador — é usado só para chamar a API do GitHub direto daqui.</div>
+  <div class="add-form-actions">
+    <button class="btn-primary" id="btnSaveGhConfig" style="font-size:12px; padding:8px 16px;">Salvar configuração</button>
+    <button class="btn-ghost" id="btnCancelGhConfig" style="font-size:12px; padding:8px 16px;">Cancelar</button>
+    <button class="btn-ghost" id="btnForgetGhConfig" style="font-size:12px; padding:8px 16px; color:var(--alert); border-color:#EBC7C1;">Remover configuração</button>
+  </div>
+</div>
+
+<div class="save-float-wrap">
+  <button class="btn-gh-settings" id="btnGhSettings" title="Configurar sincronização com GitHub">⚙️</button>
+  <button class="btn-save-float" id="btnSaveChanges" title="Baixa uma cópia atualizada deste painel com todas as edições feitas até agora">💾 Salvar alterações</button>
+</div>
 
 <footer>Painel gerado a partir da base de 483 ações TARE · Grupo Martins · Julho/2026</footer>
 
@@ -1326,14 +1357,153 @@ regrasLookupSelect.addEventListener('change', ()=>{
 });
 renderRegrasPanel();
 
+// ---------- GITHUB SYNC ----------
+const GH_STORAGE_KEY = 'tarePainelGhConfig';
+function loadGhConfig(){
+  try{
+    const raw = localStorage.getItem(GH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+let ghConfigMemory = loadGhConfig();
+
+function updateSaveButtonLabel(){
+  const btn = document.getElementById('btnSaveChanges');
+  if(ghConfigMemory && ghConfigMemory.token && ghConfigMemory.repoFull && ghConfigMemory.path){
+    btn.textContent = '🔗 Salvar no GitHub';
+    btn.title = `Salva diretamente em ${ghConfigMemory.repoFull} (${ghConfigMemory.path})`;
+  } else {
+    btn.textContent = '💾 Salvar alterações';
+    btn.title = 'Baixa uma cópia atualizada deste painel com todas as edições feitas até agora';
+  }
+}
+
+function utf8ToBase64(str){
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function saveToGitHub(htmlContent){
+  const cfg = ghConfigMemory;
+  const [owner, repo] = cfg.repoFull.split('/').map(s=>s.trim());
+  if(!owner || !repo) throw new Error('Repositório inválido. Use o formato "owner/repo".');
+  const encodedPath = cfg.path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  const branch = cfg.branch && cfg.branch.trim() ? cfg.branch.trim() : 'main';
+  const apiBase = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
+  const headers = {
+    'Authorization': `token ${cfg.token}`,
+    'Accept': 'application/vnd.github+json'
+  };
+
+  const getResp = await fetch(`${apiBase}?ref=${encodeURIComponent(branch)}`, {headers});
+  if(!getResp.ok){
+    if(getResp.status===404) throw new Error('Arquivo ou repositório não encontrado. Confira owner/repo, caminho e branch.');
+    if(getResp.status===401) throw new Error('Token inválido ou sem permissão.');
+    const errBody = await getResp.json().catch(()=>({}));
+    throw new Error(errBody.message || `Erro ao ler o arquivo atual (HTTP ${getResp.status}).`);
+  }
+  const currentFile = await getResp.json();
+
+  const putResp = await fetch(apiBase, {
+    method:'PUT',
+    headers: {...headers, 'Content-Type':'application/json'},
+    body: JSON.stringify({
+      message: `Atualização do painel TARE — ${new Date().toLocaleString('pt-BR')}`,
+      content: utf8ToBase64(htmlContent),
+      sha: currentFile.sha,
+      branch: branch
+    })
+  });
+  if(!putResp.ok){
+    if(putResp.status===409) throw new Error('O arquivo mudou no GitHub desde a última vez que você abriu esta página. Recarregue a versão mais recente antes de salvar de novo.');
+    if(putResp.status===401) throw new Error('Token inválido ou sem permissão de escrita.');
+    const errBody = await putResp.json().catch(()=>({}));
+    throw new Error(errBody.message || `Erro ao salvar (HTTP ${putResp.status}).`);
+  }
+}
+
+const githubForm = document.getElementById('githubForm');
+document.getElementById('btnGhSettings').addEventListener('click', ()=>{
+  const opening = githubForm.style.display === 'none';
+  if(opening){
+    const cfg = ghConfigMemory || {};
+    document.getElementById('ghRepo').value = cfg.repoFull || '';
+    document.getElementById('ghPath').value = cfg.path || '';
+    document.getElementById('ghBranch').value = cfg.branch || 'main';
+    document.getElementById('ghToken').value = cfg.token || '';
+    document.getElementById('ghRemember').checked = !!localStorage.getItem(GH_STORAGE_KEY);
+  }
+  githubForm.style.display = opening ? 'block' : 'none';
+});
+document.getElementById('btnCancelGhConfig').addEventListener('click', ()=>{
+  githubForm.style.display = 'none';
+});
+document.getElementById('btnSaveGhConfig').addEventListener('click', ()=>{
+  const repoFull = document.getElementById('ghRepo').value.trim();
+  const path = document.getElementById('ghPath').value.trim();
+  const branch = document.getElementById('ghBranch').value.trim() || 'main';
+  const token = document.getElementById('ghToken').value.trim();
+  if(!repoFull || !path || !token){
+    alert('Preencha repositório, caminho do arquivo e token para continuar.');
+    return;
+  }
+  const cfg = {repoFull, path, branch, token};
+  ghConfigMemory = cfg;
+  if(document.getElementById('ghRemember').checked){
+    localStorage.setItem(GH_STORAGE_KEY, JSON.stringify(cfg));
+  } else {
+    localStorage.removeItem(GH_STORAGE_KEY);
+  }
+  updateSaveButtonLabel();
+  githubForm.style.display = 'none';
+  alert('Configuração salva. Agora o botão "Salvar" grava direto no GitHub.');
+});
+document.getElementById('btnForgetGhConfig').addEventListener('click', ()=>{
+  ghConfigMemory = null;
+  localStorage.removeItem(GH_STORAGE_KEY);
+  document.getElementById('ghRepo').value = '';
+  document.getElementById('ghPath').value = '';
+  document.getElementById('ghBranch').value = '';
+  document.getElementById('ghToken').value = '';
+  document.getElementById('ghRemember').checked = false;
+  updateSaveButtonLabel();
+  githubForm.style.display = 'none';
+});
+updateSaveButtonLabel();
+
 // ---------- SAVE / EXPORT UPDATED FILE ----------
 let savedFileHandle = null;
 const supportsFileSystemAccess = ('showSaveFilePicker' in window) && window.isSecureContext;
 
+function flashSaveButton(text){
+  const btn = document.getElementById('btnSaveChanges');
+  const original = btn.textContent;
+  btn.textContent = text;
+  setTimeout(()=>{ updateSaveButtonLabel(); }, 2400);
+}
+
 async function exportUpdatedFile(){
+  const isGhConfigured = !!(ghConfigMemory && ghConfigMemory.token && ghConfigMemory.repoFull && ghConfigMemory.path);
+  const isHostedLink = location.protocol !== 'file:';
+
+  if(!isGhConfigured && isHostedLink){
+    const wantsSetup = confirm(
+      'Você está acessando este painel por um link publicado.\n\n' +
+      'Se salvar agora, as alterações ficam guardadas só neste computador — esse mesmo link vai continuar mostrando a versão antiga depois.\n\n' +
+      'Para as edições aparecerem sempre que alguém abrir esse link, é preciso conectar ao GitHub uma vez (leva 1 minuto).\n\n' +
+      'Quer configurar agora?'
+    );
+    if(wantsSetup){
+      document.getElementById('btnGhSettings').click();
+      document.getElementById('githubForm').scrollIntoView({block:'center', behavior:'smooth'});
+      return;
+    }
+    // user chose to continue anyway -> falls through to local save below
+  }
+
   // close any open panels for a clean saved state
   addForm.style.display = 'none';
   pctForm.style.display = 'none';
+  githubForm.style.display = 'none';
 
   // make sure every view reflects the latest in-memory state
   recalcStateThemeViews();
@@ -1360,7 +1530,19 @@ async function exportUpdatedFile(){
   document.getElementById('dashboard-data').textContent = JSON.stringify(newData);
   const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 
-  // Try to write directly to the same file (Chrome/Edge only, requires user permission once per session)
+  // 1) Preferred: commit directly to the configured GitHub repo
+  if(ghConfigMemory && ghConfigMemory.token && ghConfigMemory.repoFull && ghConfigMemory.path){
+    try{
+      await saveToGitHub(htmlContent);
+      flashSaveButton('✓ Salvo no GitHub');
+      return;
+    }catch(err){
+      alert('Não foi possível salvar no GitHub:\n\n' + err.message + '\n\nUma cópia local será baixada para você não perder as alterações.');
+      // falls through to local fallback below
+    }
+  }
+
+  // 2) Next best: write directly to the same local file (Chrome/Edge only)
   if(supportsFileSystemAccess){
     try{
       if(!savedFileHandle){
@@ -1372,9 +1554,7 @@ async function exportUpdatedFile(){
       const writable = await savedFileHandle.createWritable();
       await writable.write(htmlContent);
       await writable.close();
-      const btn = document.getElementById('btnSaveChanges');
-      btn.textContent = '✓ Salvo no arquivo';
-      setTimeout(()=>{ btn.textContent = '💾 Salvar alterações'; }, 2200);
+      flashSaveButton('✓ Salvo no arquivo');
       return;
     }catch(err){
       if(err && err.name === 'AbortError') return; // user cancelled the picker, do nothing
@@ -1384,6 +1564,7 @@ async function exportUpdatedFile(){
     }
   }
 
+  // 3) Fallback: download a new copy
   downloadAsNewFile(htmlContent);
 }
 
