@@ -238,21 +238,25 @@
 
   .name-input{
     font-family:'Inter',sans-serif; font-size:13px; color:var(--ink); width:100%;
-    border:1px solid var(--line); border-radius:6px; padding:7px 9px; background:#fff;
+    border:1px solid var(--line); border-radius:6px; padding:7px 30px 7px 9px; background:var(--bg);
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234C5A6E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'/><path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z'/></svg>");
+    background-repeat:no-repeat; background-position:right 9px center; background-size:12px;
   }
-  .name-input:focus{border-color:var(--primary); outline:none;}
-  .name-input.macro-name-input{font-weight:700; color:var(--primary-dark); background:transparent; border-color:transparent;}
-  .name-input.macro-name-input:hover, .name-input.macro-name-input:focus{background:#fff; border-color:var(--primary);}
+  .name-input:hover{border-color:#B9C2CE;}
+  .name-input:focus{border-color:var(--primary); outline:none; background-color:#fff;}
+  .name-input.macro-name-input{font-weight:700; color:var(--primary-dark);}
   .uf-select, .tema-select{
     font-family:'Inter',sans-serif; font-size:12px; font-weight:600; padding:7px 9px;
-    border-radius:7px; border:1px solid var(--line); cursor:pointer; background:#fff; color:var(--ink);
+    border-radius:7px; border:1px solid var(--line); cursor:pointer; background:var(--bg); color:var(--ink);
     width:100%; text-overflow:ellipsis; white-space:nowrap; overflow:hidden;
   }
+  .uf-select:hover, .tema-select:hover{border-color:#B9C2CE;}
   .period-input{
     font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink-soft); width:100%;
-    border:1px solid var(--line); border-radius:6px; padding:7px 9px; background:#fff;
+    border:1px solid var(--line); border-radius:6px; padding:7px 9px; background:var(--bg);
   }
-  .period-input:focus{border-color:var(--primary); outline:none;}
+  .period-input:hover{border-color:#B9C2CE;}
+  .period-input:focus{border-color:var(--primary); outline:none; background-color:#fff;}
 
   .btn-delete{
     background:transparent; border:1px solid transparent; border-radius:7px;
@@ -311,6 +315,18 @@
     font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600; color:#fff;}
 
   footer{text-align:center; padding:26px; font-size:11.5px; color:var(--ink-soft);}
+
+  .btn-save-float{
+    position:fixed; bottom:26px; right:26px; z-index:200;
+    font-family:'Inter',sans-serif; font-size:14px; font-weight:700; color:#fff;
+    background:var(--primary); border:none; border-radius:30px; padding:14px 24px; cursor:pointer;
+    box-shadow:0 8px 22px rgba(0,53,178,0.38);
+  }
+  .btn-save-float:hover{background:var(--primary-dark); transform:translateY(-1px);}
+  .btn-save-float:active{transform:translateY(0);}
+  @media (max-width:900px){
+    .btn-save-float{bottom:16px; right:16px; padding:12px 18px; font-size:13px;}
+  }
 
   @media (max-width:900px){
     .kpi-row{grid-auto-flow:row; grid-template-columns:repeat(2,1fr);}
@@ -499,6 +515,8 @@
   </section>
 
 </main>
+<button class="btn-save-float" id="btnSaveChanges" title="Baixa uma cópia atualizada deste painel com todas as edições feitas até agora">💾 Salvar alterações</button>
+
 <footer>Painel gerado a partir da base de 483 ações TARE · Grupo Martins · Julho/2026</footer>
 
 <script id="dashboard-data" type="application/json">
@@ -1308,6 +1326,81 @@ regrasLookupSelect.addEventListener('change', ()=>{
 });
 renderRegrasPanel();
 
+// ---------- SAVE / EXPORT UPDATED FILE ----------
+let savedFileHandle = null;
+const supportsFileSystemAccess = ('showSaveFilePicker' in window) && window.isSecureContext;
+
+async function exportUpdatedFile(){
+  // close any open panels for a clean saved state
+  addForm.style.display = 'none';
+  pctForm.style.display = 'none';
+
+  // make sure every view reflects the latest in-memory state
+  recalcStateThemeViews();
+  renderDonut();
+  renderQuarterChart();
+  renderStatusSummary();
+  renderConformidadeSummary();
+  render();
+
+  const newData = {
+    records: records,
+    states_sorted: statesSorted,
+    themes_sorted: themesSorted,
+    state_names: stateNames,
+    state_count: liveStateCount(),
+    theme_count: liveThemeCount(),
+    matrix: liveMatrix(),
+    resp_count: liveRespCount(),
+    quarters_order: DATA.quarters_order,
+    quarter_resp: liveQuarterResp(),
+    resp_list: liveRespList(),
+    tare_groups_sorted: liveTareGroups(),
+  };
+  document.getElementById('dashboard-data').textContent = JSON.stringify(newData);
+  const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+  // Try to write directly to the same file (Chrome/Edge only, requires user permission once per session)
+  if(supportsFileSystemAccess){
+    try{
+      if(!savedFileHandle){
+        savedFileHandle = await window.showSaveFilePicker({
+          suggestedName: 'painel_executivo_tare_2026.html',
+          types: [{description:'Página HTML', accept:{'text/html':['.html']}}]
+        });
+      }
+      const writable = await savedFileHandle.createWritable();
+      await writable.write(htmlContent);
+      await writable.close();
+      const btn = document.getElementById('btnSaveChanges');
+      btn.textContent = '✓ Salvo no arquivo';
+      setTimeout(()=>{ btn.textContent = '💾 Salvar alterações'; }, 2200);
+      return;
+    }catch(err){
+      if(err && err.name === 'AbortError') return; // user cancelled the picker, do nothing
+      console.warn('Não foi possível salvar diretamente no arquivo, baixando cópia em vez disso.', err);
+      savedFileHandle = null;
+      // falls through to download fallback below
+    }
+  }
+
+  downloadAsNewFile(htmlContent);
+}
+
+function downloadAsNewFile(htmlContent){
+  const blob = new Blob([htmlContent], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'painel_executivo_tare_2026.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  alert('Arquivo salvo! Um novo HTML foi baixado com todas as suas alterações até agora.\n\nAbra esse arquivo baixado da próxima vez para continuar de onde parou — feche esta aba sem medo de perder o que já foi salvo.');
+}
+document.getElementById('btnSaveChanges').addEventListener('click', exportUpdatedFile);
 </script>
 </body>
 </html>
