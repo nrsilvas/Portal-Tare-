@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  "name": "portal-tare",
+
+  "main": "worker.js",
+
+  "compatibility_date": "2026-09-30",
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "portal-acoes-tare-db",
+      "database_id": "702e0c14-9b21-45f7-8d62-040ad7153b7f"
+    }
+  ]
+}
